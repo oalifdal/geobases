@@ -1139,7 +1139,6 @@ class GeoBase(VisualMixin):
 
         >>> geo_o.addGrid(radius=50, force=True, verbose=True)
         /!\ Grid already built, overriding...
-        No usable geocode for ZZL: ("",""), skipping point...
         """
         if self.hasGrid():
             if not force:
@@ -1262,13 +1261,13 @@ class GeoBase(VisualMixin):
         """Simple get on the base.
 
         Get data on ``key`` for ``field`` information. For example
-        you can get data on ``CDG`` for its ``city_code``.
+        you can get data on ``CDG`` for its ``city_code_list``.
         You can use the ``None`` as ``field`` value to get all information
         in a dictionary.
         You can give an additional keyword argument
         ``default``, to avoid ``KeyError`` on the ``key`` parameter.
 
-        :param key:     the key of the thing (like ``'SFO'``)
+        :param key:     the key of the element (like ``'SFO'``)
         :param field:   the field (like ``'name'`` or ``'iata_code'``)
         :param kwargs:  other named arguments, use 'default' to avoid \
                 ``KeyError`` on ``key`` (not ``KeyError`` on ``field``). \
@@ -1374,7 +1373,7 @@ class GeoBase(VisualMixin):
     def _joinGet(self, key, fields=None, ext_field=None):
         """Get that performs join with external bases.
 
-        :param key:     the key of the thing (like ``'SFO'``)
+        :param key:     the key of the element (like ``'SFO'``)
         :param fields:  the iterable of fields (like ``'name'`` or \
                 ``'iata_code'``)
         :param ext_field:  the external field we want in the external \
@@ -1427,7 +1426,7 @@ class GeoBase(VisualMixin):
     def getLocation(self, key, **kwargs):
         """Returns geocode as (float, float) or None.
 
-        :param key:     the key of the thing (like ``'SFO'``)
+        :param key:     the key of the element (like ``'SFO'``)
         :param kwargs:  other named arguments, use 'default' to avoid \
                 ``KeyError`` on ``key`` (not ``None`` on wrong value).
         :returns:       the location, a tuple of floats like ``(lat, lng)``, or \
@@ -1435,7 +1434,6 @@ class GeoBase(VisualMixin):
 
         >>> geo_o.getLocation('AGN')
         (57.5..., -134...)
-        >>> geo_o.getLocation('WPS') # no usable geocode => None
 
         Behavior on unkwown key.
 
@@ -1469,7 +1467,7 @@ class GeoBase(VisualMixin):
     def hasParents(self, key):
         """Tell if a key has parents.
 
-        :param key:     the key of the thing (like ``'SFO'``)
+        :param key:     the key of the element (like ``'SFO'``)
         :returns:       the number of parents
 
         >>> geo_o.hasParents('MRS')
@@ -1485,7 +1483,7 @@ class GeoBase(VisualMixin):
     def hasDuplicates(self, key):
         """Tell if a key has duplicates.
 
-        :param key:     the key of the thing (like ``'SFO'``)
+        :param key:     the key of the element (like ``'SFO'``)
         :returns:       the number of duplicates
 
         >>> geo_o.hasDuplicates('MRS')
@@ -1502,7 +1500,7 @@ class GeoBase(VisualMixin):
     def getFromAllDuplicates(self, key, field=None, **kwargs):
         """Get all duplicates data, parent key included.
 
-        :param key:     the key of the thing (like ``'SFO'``)
+        :param key:     the key of the element (like ``'SFO'``)
         :param field:   the field (like ``'name'`` or ``'iata_code'``)
         :param kwargs:  other named arguments, use 'default' to avoid \
                 key failure
@@ -1564,7 +1562,7 @@ class GeoBase(VisualMixin):
 
 
 
-    def _findWithUsingSingleIndex(self, fields, values):
+    def _findWithUsingOneIndex(self, fields, values):
         """Perform findWith using one index.
         """
         if values not in self._indexed[fields]:
@@ -1593,7 +1591,7 @@ class GeoBase(VisualMixin):
 
 
 
-    def _findWithUsingMultipleIndex(self, conditions, from_keys, mode, verbose=False):
+    def _findWithUsingSeveralIndex(self, conditions, mode, verbose=False):
         """Perform findWith using several indexes.
         """
         # In case conditions is an iterator
@@ -1604,38 +1602,40 @@ class GeoBase(VisualMixin):
 
         if self.hasIndex(fields) and mode == 'and':
             if verbose:
-                print 'Using index for %s: value(s) %s' % (str(fields), str(values))
+                print '["%s" mode] Using index for %s: value(s) %s' % \
+                        (mode, str(fields), str(values))
 
             # Here we use directly the multiple index to have the matching keys
-            from_keys = set(from_keys)
-            for m, key in self._findWithUsingSingleIndex(fields, values):
-                if key in from_keys:
-                    yield m, key
+            for m, key in self._findWithUsingOneIndex(fields, values):
+                yield m, key
 
 
         elif all(self.hasIndex(f) for f in fields):
             if verbose:
-                print 'Using index for %s: value(s) %s' % \
-                        (' and '.join(str((f,)) for f in set(fields)),
+                print '["%s" mode] Using index for %s: value(s) %s' % \
+                        (mode,
+                         ' and '.join(str((f,)) for f in set(fields)),
                          '; '.join(str((v,)) for v in values))
 
             if mode == 'or':
                 # Here we use each index to check the condition on one field
                 # and we return the keys matching *any* condition
-                candidates = set()
-                for f, v in conditions:
-                    candidates = candidates | set(k for _, k in self._findWithUsingSingleIndex((f,), (v,)))
+                candidates = set.union(*[
+                    set(k for _, k in self._findWithUsingOneIndex((f,), (v,)))
+                    for f, v in conditions
+                ])
 
-                for key in candidates & set(from_keys):
+                for key in candidates:
                     m = sum(self.get(key, f) == v for f, v in conditions)
                     yield m, key
 
             elif mode == 'and':
                 # Here we use each index to check the condition on one field
                 # and we keep only the keys matching *all* conditions
-                candidates = set(from_keys)
-                for f, v in conditions:
-                    candidates = candidates & set(k for _, k in self._findWithUsingSingleIndex((f,), (v,)))
+                candidates = set.intersection(*[
+                    set(k for _, k in self._findWithUsingOneIndex((f,), (v,)))
+                    for f, v in conditions
+                ])
 
                 m = len(fields)
                 for key in candidates:
@@ -1643,7 +1643,7 @@ class GeoBase(VisualMixin):
 
 
 
-    def findWith(self, conditions, from_keys=None, reverse=False, force_str=False, mode='and', index=True, verbose=False):
+    def findWith(self, conditions, from_keys=None, reverse=False, mode='and', index=True, verbose=False):
         """Get iterator of all keys with particular field.
 
         For example, if you want to know all airports in Paris.
@@ -1654,7 +1654,6 @@ class GeoBase(VisualMixin):
                 the lower level, before combining conditions. So if you \
                 have two conditions with ``mode='and'``, expect \
                 results matching not condition 1 *and* not condition 2.
-        :param force_str:  for the ``str()`` method before every test
         :param mode:       either ``'or'`` or ``'and'``, how to handle \
                 several conditions
         :param from_keys:  if given, we will look for results from this \
@@ -1672,8 +1671,6 @@ class GeoBase(VisualMixin):
         []
         >>> len(list(geo_o.findWith([('__dup__', [])]))) # doctest: +SKIP
         7013
-        >>> len(list(geo_o.findWith([('__dup__', '[]')], force_str=True))) # doctest: +SKIP
-        7013
         >>> # Counting duplicated keys
         >>> len(list(geo_o.findWith([('__par__', [])], reverse=True))) # doctest: +SKIP
         4519
@@ -1681,7 +1678,7 @@ class GeoBase(VisualMixin):
         Testing indexes.
 
         >>> list(geo_o.findWith([('iata_code', 'MRS')], mode='and', verbose=True))
-        Using index for ('iata_code',): value(s) ('MRS',)
+        ["and" mode] Using index for ('iata_code',): value(s) ('MRS',)
         [(1, 'MRS'), (1, 'MRS@1')]
         >>> geo_o.addIndex('iata_code', force=True)
         /!\ Index on ('iata_code',) already built, overriding...
@@ -1695,7 +1692,7 @@ class GeoBase(VisualMixin):
         >>> list(geo_o.findWith([('iata_code', 'NCE'), ('location_type', ('A',))],
         ...                     mode='and',
         ...                     verbose=True))
-        Using index for ('iata_code',) and ('location_type',): value(s) ('NCE',); (('A',),)
+        ["and" mode] Using index for ('iata_code',) and ('location_type',): value(s) ('NCE',); (('A',),)
         [(2, 'NCE')]
 
         Multiple index.
@@ -1704,19 +1701,19 @@ class GeoBase(VisualMixin):
         >>> list(geo_o.findWith([('iata_code', 'NCE'), ('location_type', ('A',))],
         ...                     mode='and',
         ...                     verbose=True))
-        Using index for ('iata_code', 'location_type'): value(s) ('NCE', ('A',))
+        ["and" mode] Using index for ('iata_code', 'location_type'): value(s) ('NCE', ('A',))
         [(2, 'NCE')]
 
         Mode "or" with index.
 
-        >>> geo_o.addIndex('city_code')
-        Built index for fields ('city_code',)
-        >>> list(geo_o.findWith([('iata_code', 'NCE'), ('city_code', 'NCE')],
+        >>> geo_o.addIndex('city_code_list')
+        Built index for fields ('city_code_list',)
+        >>> list(geo_o.findWith([('iata_code', 'NCE'), ('city_code_list', ('NCE',))],
         ...                     mode='or',
         ...                     verbose=True))
-        Using index for ('iata_code',) and ('city_code',): value(s) ('NCE',); ('NCE',)
+        ["or" mode] Using index for ('iata_code',) and ('city_code_list',): value(s) ('NCE',); (('NCE',),)
         [(2, 'NCE@1'), (2, 'NCE')]
-        >>> list(geo_o.findWith([('iata_code', 'NCE'), ('city_code', 'NCE')],
+        >>> list(geo_o.findWith([('iata_code', 'NCE'), ('city_code_list', ('NCE',))],
         ...                     mode='or',
         ...                     index=False,
         ...                     verbose=True))
@@ -1724,10 +1721,10 @@ class GeoBase(VisualMixin):
 
         Testing several conditions.
 
-        >>> c_1 = [('city_code', 'PAR')]
+        >>> c_1 = [('city_code_list', ('PAR',))]
         >>> c_2 = [('location_type', ('H',))]
         >>> len(list(geo_o.findWith(c_1)))
-        18
+        16
         >>> len(list(geo_o.findWith(c_2))) # doctest: +SKIP
         100
         >>> len(list(geo_o.findWith(c_1 + c_2, mode='and'))) # doctest: +SKIP
@@ -1736,7 +1733,12 @@ class GeoBase(VisualMixin):
         111
         """
         if from_keys is None:
-            from_keys = iter(self)
+            iter_keys = iter(self)
+            is_in_keys = lambda k: k in self
+        else:
+            from_keys = set(from_keys)
+            iter_keys = iter(from_keys)
+            is_in_keys = lambda k: k in from_keys
 
         # In case conditions is an iterator
         conditions = list(conditions)
@@ -1748,30 +1750,29 @@ class GeoBase(VisualMixin):
                 raise ValueError('Conditions %s include unknown field "%s"' % \
                                  (conditions, field))
 
+        # If we have only one condition, mode does not matter
+        if len(conditions) == 1 and mode == 'or':
+            mode = 'and'
+
         # If indexed
-        if index and not force_str and not reverse:
+        if index and not reverse:
             # If this condition is not met, we do not raise StopIteration,
             # we will proceed with non-indexed code after
             if self._checkIndexUsability(conditions, mode):
-
-                for t in self._findWithUsingMultipleIndex(conditions,
-                                                          from_keys=from_keys,
-                                                          mode=mode,
-                                                          verbose=verbose):
-                    yield t
+                for m, key in self._findWithUsingSeveralIndex(conditions,
+                                                              mode=mode,
+                                                              verbose=verbose):
+                    if is_in_keys(key):
+                        yield m, key
                 raise StopIteration
 
 
         # We set the lambda function now to avoid testing
-        # force_str and reverse at each key later
-        if not force_str and not reverse:
-            pass_one = lambda a, b: a == b
-        elif not force_str and reverse:
+        # reverse at each key later
+        if reverse:
             pass_one = lambda a, b: a != b
-        elif force_str and not reverse:
-            pass_one = lambda a, b: str(a) == str(b)
         else:
-            pass_one = lambda a, b: str(a) != str(b)
+            pass_one = lambda a, b: a == b
 
         # Handle and/or cases when multiple conditions
         if mode == 'and':
@@ -1782,7 +1783,7 @@ class GeoBase(VisualMixin):
             raise ValueError('"mode" argument must be in %s, was %s' % \
                              (str(['and', 'or']), mode))
 
-        for key in from_keys:
+        for key in iter_keys:
             if key not in self:
                 # This means from_keys parameters contained unknown keys
                 if verbose:
@@ -1810,7 +1811,7 @@ class GeoBase(VisualMixin):
     def __contains__(self, key):
         """Test if a thing is in the base.
 
-        :param key: the key of the thing to be tested
+        :param key: the key of the element to be tested
         :returns:   a boolean
 
         >>> 'AN' in geo_a
@@ -1947,24 +1948,28 @@ class GeoBase(VisualMixin):
         [(12.76..., 'ORY'), (23.40..., 'CDG')]
         """
         if from_keys is None:
-            from_keys = iter(self)
+            iter_keys = iter(self)
+            is_in_keys = lambda k: k in self
+        else:
+            from_keys = set(from_keys)
+            iter_keys = iter(from_keys)
+            is_in_keys = lambda k: k in from_keys
 
         if grid and not self.hasGrid():
             raise ValueError('Attempting to use grid, but grid is None')
 
         if grid:
-            # Using grid, from_keys if just a post-filter
-            from_keys = set(from_keys)
-            for dist, thing in self._ggrid.findNearPoint(lat_lng=lat_lng,
-                                                         radius=radius,
-                                                         double_check=double_check):
-                if thing in from_keys:
-                    yield dist, thing
+            # Using grid, from_keys is just used as post-filter
+            for dist, key in self._ggrid.findNearPoint(lat_lng=lat_lng,
+                                                       radius=radius,
+                                                       double_check=double_check):
+                if is_in_keys(key):
+                    yield dist, key
 
         else:
-            for dist, thing in self._buildDistances(lat_lng, from_keys):
+            for dist, key in self._buildDistances(lat_lng, iter_keys):
                 if dist <= radius:
-                    yield dist, thing
+                    yield dist, key
 
 
 
@@ -1975,7 +1980,7 @@ class GeoBase(VisualMixin):
         We just look up in the base to retrieve latitude and longitude, then
         call ``findNearPoint``.
 
-        :param key:       the key of the thing (like ``'SFO'``)
+        :param key:       the key of the element (like ``'SFO'``)
         :param radius:    the radius of the search (kilometers)
         :param from_keys: if ``None``, it takes all keys in consideration, \
             else takes ``from_keys`` iterable of keys to perform search.
@@ -2009,7 +2014,12 @@ class GeoBase(VisualMixin):
         [(0.0, 'ORY'), (34.8..., 'CDG')]
         """
         if from_keys is None:
-            from_keys = iter(self)
+            iter_keys = iter(self)
+            is_in_keys = lambda k: k in self
+        else:
+            from_keys = set(from_keys)
+            iter_keys = iter(from_keys)
+            is_in_keys = lambda k: k in from_keys
 
         if grid and not self.hasGrid():
             raise ValueError('Attempting to use grid, but grid is None')
@@ -2018,22 +2028,20 @@ class GeoBase(VisualMixin):
             raise StopIteration
 
         if grid:
-            # Using grid, from_keys if just a post-filter
-            from_keys = set(from_keys)
-
-            for dist, thing in self._ggrid.findNearKey(key=key,
-                                                       radius=radius,
-                                                       double_check=double_check):
-                if thing in from_keys:
-                    yield dist, thing
+            # Using grid, from_keys is just used as post-filter
+            for dist, key in self._ggrid.findNearKey(key=key,
+                                                     radius=radius,
+                                                     double_check=double_check):
+                if is_in_keys(key):
+                    yield dist, key
 
         else:
-            for dist, thing in self.findNearPoint(lat_lng=self.getLocation(key),
-                                                  radius=radius,
-                                                  from_keys=from_keys,
-                                                  grid=grid,
-                                                  double_check=double_check):
-                yield dist, thing
+            for dist, key in self.findNearPoint(lat_lng=self.getLocation(key),
+                                                radius=radius,
+                                                from_keys=iter_keys,
+                                                grid=grid,
+                                                double_check=double_check):
+                yield dist, key
 
 
 
@@ -2098,17 +2106,17 @@ class GeoBase(VisualMixin):
             raise ValueError('Attempting to use grid, but grid is None')
 
         if grid:
-            for dist, thing in self._ggrid.findClosestFromPoint(lat_lng=lat_lng,
-                                                                N=N,
-                                                                double_check=double_check,
-                                                                from_keys=from_keys):
-                yield dist, thing
+            for dist, key in self._ggrid.findClosestFromPoint(lat_lng=lat_lng,
+                                                              N=N,
+                                                              double_check=double_check,
+                                                              from_keys=from_keys):
+                yield dist, key
 
         else:
             iterable = self._buildDistances(lat_lng, from_keys)
 
-            for dist, thing in heapq.nsmallest(N, iterable):
-                yield dist, thing
+            for dist, key in heapq.nsmallest(N, iterable):
+                yield dist, key
 
 
 
@@ -2119,7 +2127,7 @@ class GeoBase(VisualMixin):
         We just look up in the base to retrieve latitude and longitude, then
         call ``findClosestFromPoint``.
 
-        :param key:       the key of the thing (like ``'SFO'``)
+        :param key:       the key of the element (like ``'SFO'``)
         :param N:         the N closest results wanted
         :param from_keys: if ``None``, it takes all keys in consideration, \
             else takes ``from_keys`` iterable of keys to perform \
@@ -2172,19 +2180,19 @@ class GeoBase(VisualMixin):
             raise StopIteration
 
         if grid:
-            for dist, thing in self._ggrid.findClosestFromKey(key=key,
-                                                              N=N,
-                                                              double_check=double_check,
-                                                              from_keys=from_keys):
-                yield dist, thing
+            for dist, key in self._ggrid.findClosestFromKey(key=key,
+                                                            N=N,
+                                                            double_check=double_check,
+                                                            from_keys=from_keys):
+                yield dist, key
 
         else:
-            for dist, thing in self.findClosestFromPoint(lat_lng=self.getLocation(key),
-                                                         N=N,
-                                                         from_keys=from_keys,
-                                                         grid=grid,
-                                                         double_check=double_check):
-                yield dist, thing
+            for dist, key in self.findClosestFromPoint(lat_lng=self.getLocation(key),
+                                                       N=N,
+                                                       from_keys=from_keys,
+                                                       grid=grid,
+                                                       double_check=double_check):
+                yield dist, key
 
 
 

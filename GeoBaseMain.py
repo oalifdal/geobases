@@ -522,6 +522,13 @@ def display_browser(templates, output_dir, nb_res, address, port):
             else:
                 print '/!\ "%s %s:%s/%s" not launched automatically. %s results, may be slow.' % \
                         (BROWSER, address, port, template, nb_res)
+
+        elif template.endswith('_globe.html'):
+            if nb_res <= GLOBE_BROWSER_LIM:
+                to_be_launched.append(template)
+            else:
+                print '/!\ "%s %s:%s/%s" not launched automatically. %s results, may be slow.' % \
+                        (BROWSER, address, port, template, nb_res)
         else:
             to_be_launched.append(template)
 
@@ -1037,9 +1044,6 @@ SPLIT   = '/'
 DISABLE = '__none__'
 REF     = '__ref__'
 
-# For requests with findWith, force stringification before testing
-FORCE_STR = False
-
 ALLOWED_ICON_TYPES       = (None, 'auto', 'S', 'B')
 ALLOWED_INTER_TYPES      = ('__key__', '__exact__', '__fuzzy__', '__phonetic__')
 ALLOWED_PHONETIC_METHODS = ('dmetaphone', 'dmetaphone-strict', 'metaphone', 'nysiis')
@@ -1082,6 +1086,7 @@ DEF_LINK_DUPLICATES  = True
 DEF_DRAW_JOIN_FIELDS = True
 
 MAP_BROWSER_LIM   = 8000   # limit for launching browser automatically
+GLOBE_BROWSER_LIM = 8000   # limit for launching browser automatically
 TABLE_BROWSER_LIM = 2000   # limit for launching browser automatically
 
 # Graph defaults, generate_headers is used for stdin input
@@ -1524,6 +1529,13 @@ def handle_args():
         nargs = '+',
         metavar = 'OPTION',
         default = [])
+
+    parser.add_argument('-3', '--3d',
+        help = dedent('''\
+        When available, enable 3D visualizations.
+        This enables the 3D WebGL-based globe when using the map display.
+        '''),
+        action = 'store_true')
 
     parser.add_argument('-g', '--graph',
         help = dedent('''\
@@ -2581,6 +2593,9 @@ def main():
     if args['output_dir'] != SKIP:
         output_dir = args['output_dir']
 
+    # With 3D
+    use_3D = args['3d']
+
     # Reading map options
     icon_label       = best_field(DEF_LABEL_FIELDS,  g.fields)
     icon_weight      = best_field(DEF_WEIGHT_FIELDS, g.fields)
@@ -2771,12 +2786,12 @@ def main():
             res = []
             for val in values:
                 conditions = [(interactive_field, val)]
-                res.extend(list(g.findWith(conditions, force_str=FORCE_STR, mode='or', verbose=logorrhea)))
+                res.extend(list(g.findWith(conditions, mode='or', verbose=logorrhea)))
 
             # Other way to do it by putting all lines in one *or* condition
             # But for over 1000 lines, this becomes slower than querying each line
             #conditions = [(interactive_field, val) for val in values]
-            #res = g.findWith(conditions, force_str=FORCE_STR, mode='or', verbose=logorrhea)
+            #res = g.findWith(conditions, mode='or', verbose=logorrhea)
             last = 'exact'
 
         elif interactive_type == '__fuzzy__':
@@ -2820,7 +2835,7 @@ def main():
             else:
                 print '(*) Applying: field %s' % (' %s ' % mode).join('%s == "%s"' % c for c in conditions)
 
-        res = list(g.findWith(conditions, from_keys=ex_keys(res), reverse=args['reverse'], mode=mode, force_str=FORCE_STR, verbose=logorrhea))
+        res = list(g.findWith(conditions, from_keys=ex_keys(res), reverse=args['reverse'], mode=mode, verbose=logorrhea))
         last = 'exact'
 
 
@@ -2938,6 +2953,7 @@ def main():
                                 draw_join_fields=draw_join_fields,
                                 catalog=None,
                                 line_colors=None,
+                                use_3D=use_3D,
                                 verbose=True,
                                 warnings=logorrhea)
 

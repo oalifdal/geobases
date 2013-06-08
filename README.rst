@@ -1,9 +1,14 @@
-GeoBases |travis|_
-==================
+GeoBases |travis|_ |cratev|_ |crated|_
+======================================
 
 .. _travis : https://travis-ci.org/opentraveldata/geobases
 .. |travis| image:: https://api.travis-ci.org/opentraveldata/geobases.png?branch=develop
 
+.. _crated : https://crate.io/packages/GeoBasesDev
+.. |crated| image:: https://pypip.in/d/GeoBasesDev/badge.png
+
+.. _cratev : https://crate.io/packages/GeoBasesDev
+.. |cratev| image:: https://pypip.in/v/GeoBasesDev/badge.png
 
 Introduction
 ------------
@@ -255,8 +260,8 @@ Information access
 
 .. code-block:: python
 
- >>> geo_o.get('CDG', 'city_code')
- 'PAR'
+ >>> geo_o.get('CDG', 'city_code_list')
+ ('PAR',)
  >>> geo_o.get('BRU', 'name')
  'Bruxelles National'
  >>> geo_t.get('frnic', 'name')
@@ -273,13 +278,13 @@ Find things with properties
 
 .. code-block:: python
 
- >>> conditions = [('city_code', 'PAR'), ('location_type', ('H',))]
+ >>> conditions = [('city_code_list', ('PAR',)), ('location_type', ('H',))]
  >>> list(geo_o.findWith(conditions, mode='and'))
  [(2, 'JDP'), (2, 'JPU')]
  >>>
- >>> conditions = [('city_code', 'PAR'), ('city_code', 'LON')]
+ >>> conditions = [('city_code_list', ('PAR',)), ('city_code_list', ('LON',))]
  >>> len(list(geo_o.findWith(conditions, mode='or')))
- 35
+ 33
 
 Distance computation
 ~~~~~~~~~~~~~~~~~~~~
