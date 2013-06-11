@@ -1100,6 +1100,10 @@ DEF_GRAPH_FIELDS = ('continent_name', 'raw_offset',
 DEF_DASHBOARD_WEIGHT = None
 DEF_DASHBOARD_KEEP   = 4
 
+# Dashboard defaults
+DEF_CHORD_WEIGHT = None
+DEF_CHORD_KEEP   = 10
+
 # Terminal width defaults
 DEF_CHAR_COL = 25
 MIN_CHAR_COL = 3
@@ -1605,6 +1609,32 @@ def handle_args():
         nargs = '+',
         metavar = 'OPTION',
         default = [])
+
+    parser.add_argument('-j', '--junkychord',
+        help = dedent('''\
+        This is the chord display (aggregated view).
+        HTML/Javascript/JSON files are generated.
+        Unless --quiet is also set, a browser will be launched
+        and a simple HTTP server will serve the HTML results
+        on %s:%s by default.
+        ''' % (ADDRESS, PORT)),
+        action = 'store_true')
+
+    parser.add_argument('-J', '--chord-options',
+        help = dedent('''\
+        Customize the chord display.
+        2 optional arguments: weight, keep.
+            1) default weight is "%s".
+            2) the second parameter is used to control
+               the number of elements kept in each graph.
+               Default is %s.
+        For any field, you may put "%s" to leave the default value.
+        Example: -J _ 10
+        ''' % (DEF_CHORD_WEIGHT, DEF_CHORD_KEEP, SKIP)),
+        nargs = '+',
+        metavar = 'OPTION',
+        default = [])
+
 
     parser.add_argument('-o', '--output-dir',
         help = dedent('''\
@@ -2334,6 +2364,8 @@ def main():
         frontend = 'graph'
     elif args['dashboard']:
         frontend = 'dashboard'
+    elif args['junkychord']:
+        frontend = 'chord'
     elif args['quiet']:
         frontend = 'quiet'
     else:
@@ -2653,6 +2685,17 @@ def main():
 
     if len(args['dashboard_options']) >= 2 and args['dashboard_options'][1] != SKIP:
         dashboard_keep = args['dashboard_options'][1]
+
+    # Reading chord options
+    chord_weight = DEF_CHORD_WEIGHT
+    chord_keep   = DEF_CHORD_KEEP
+
+    if len(args['chord_options']) >= 1 and args['chord_options'][0] != SKIP:
+        chord_weight = None if args['chord_options'][0] == DISABLE else args['chord_options'][0]
+
+    if len(args['chord_options']) >= 2 and args['chord_options'][1] != SKIP:
+        chord_keep = args['chord_options'][1]
+
 
     # Reading interactive query options
     interactive_field = best_field(DEF_INTER_FIELDS, g.fields)
@@ -3012,6 +3055,26 @@ def main():
             print json.dumps(g.buildDashboardData(keep=dashboard_keep,
                                                   weight=dashboard_weight,
                                                   from_keys=ex_keys(res)),
+                             indent=4)
+
+    if frontend == 'chord':
+        visu_info = g.chordVisualize(output=g.data,
+                                     output_dir=output_dir,
+                                     keep=chord_keep,
+                                     value_weight=chord_weight,
+                                     from_keys=ex_keys(res),
+                                     verbose=verbose)
+
+        rendered, (templates, _) = visu_info
+
+        if templates and verbose:
+            display_browser(templates, output_dir, nb_res, address, port)
+        else:
+            # In quiet mode we do not launch the server
+            # but we display the graph structure
+            print json.dumps(g.buildChordData(keep=chord_keep,
+                                              weight=chord_weight,
+                                              from_keys=ex_keys(res)),
                              indent=4)
 
 

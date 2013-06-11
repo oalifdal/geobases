@@ -11,12 +11,13 @@ from __future__ import with_statement
 import os
 import os.path as op
 from operator import itemgetter
-from itertools import product
+from itertools import product, combinations
 import json
 from shutil import copy
-from collections import defaultdict
+from collections import defaultdict, Counter
 from datetime import datetime
 import math
+import pprint
 
 # Not in standard library
 from dateutil.relativedelta import relativedelta
@@ -436,7 +437,6 @@ class VisualMixin(object):
         return counters, sum_info, densities, time_series
 
 
-
     def dashboardVisualize(self,
                            output=DEFAULT_TMP_NAME,
                            output_dir=DEFAULT_TMP_DIR,
@@ -488,6 +488,133 @@ class VisualMixin(object):
                                                output_dir,
                                                json_name,
                                                verbose=verbose)
+
+
+    def _buildChordMatrix(self, field1, field2, keep, get_weight, keys):
+
+        matrix = []
+        entities = Counter()
+        graph = defaultdict(Counter)
+
+        for key in keys:
+            val1, val2 = self.get(key, field1), self.get(key, field2)
+            count = get_weight(key)
+            graph[val1][val2] += count
+            entities[val1] += count
+            entities[val2] += count
+
+        # build the relationship matrix for the top-keep entities
+        top_entities = [ent[0] for ent in entities.most_common(keep)]
+        for ent1 in top_entities:
+            matrix.append([graph[ent1].get(ent2, 0) for ent2 in top_entities])
+
+        result = {'matrix': matrix, 'entities': top_entities}
+        return result
+
+    @staticmethod
+    def _matrixKey(field1, field2, sep=''):
+        return '%s%s%s' % (field1, sep, field2)
+
+    def _buildChordMatrices(self, keep, get_weight, from_keys):
+        """Return relationship matrices.
+        """
+        matrices = {}
+        # you sure wanna do this?
+        for field1, field2 in combinations(filter(self._isFieldNormal, self.fields), 2):
+
+            matrices[self._matrixKey(field1, field2)] = self._buildChordMatrix(field1,
+                                                                field2,
+                                                                keep,
+                                                                get_weight,
+                                                                from_keys)
+
+        return matrices
+
+    def buildChordData(self, keep=20, value_weight=None, from_keys=None):
+        """Build chord data.
+
+        :param keep:   the number of values kept after counting for \
+                each field
+        :param dashboard_weight: the field used as weight for the graph. Leave \
+                ``None`` if you just want to count the number of keys
+        :param from_keys: only use this iterable of keys if not ``None``
+        :returns: a dictionary of fields counters information
+        """
+        # Arguments testing
+        #if dashboard_weight is not None and dashboard_weight not in self.fields:
+        #    raise ValueError('weight "%s" not in fields %s.' % (dashboard_weight, self.fields))
+
+        # Defining get_weight lambda function
+        if value_weight is None:
+            get_weight = lambda key: 1
+        else:
+            def get_weight(key):
+                """Custom weight computation."""
+                try:
+                    w = float(self.get(key, value_weight))
+                except (ValueError, TypeError):
+                    w = 0
+                return w
+
+        if from_keys is None:
+            from_keys = iter(self)
+
+        # Since we are going to loop several times over it, we list()
+        from_keys = list(from_keys)
+
+        # Computing counters and sum_info for bar charts
+        matrices = self._buildChordMatrices(keep, get_weight, from_keys)
+
+        return matrices
+
+    def chordVisualize(self,
+                       output=DEFAULT_TMP_NAME,
+                       output_dir=DEFAULT_TMP_DIR,
+                       keep=20,
+                       value_weight=None,
+                       from_keys=None,
+                       verbose=True):
+        """Chord display (aggregated view).
+
+        :param output:      set the name of the rendered files
+        :param output_dir:  set the directory of the rendered files, will \
+                be created if it does not exist
+        :param keep:        the number of values kept after counting for \
+                each field
+        :param value_weight: the field used as weight for the graph. Leave \
+                ``None`` if you just want to count the number of keys
+        :param from_keys:   only display this iterable of keys if not ``None``
+        :param verbose:     toggle verbosity
+        :returns:           this is the tuple of (names of templates \
+                rendered, (list of html templates, list of static files))
+        """
+        # Handle output directory
+        if not output_dir:
+            output_dir = '.'
+        elif not op.isdir(output_dir):
+            os.makedirs(output_dir)
+
+        data = self.buildChordData(keep=keep,
+                                   value_weight=value_weight,
+                                   from_keys=from_keys)
+
+        matrices = data
+
+        # Dump the json geocodes
+        json_name = '%s_chord.json' % op.join(output_dir, output)
+
+        with open(json_name, 'w') as out:
+            out.write(json.dumps({
+                'matrices' : matrices,
+                'weight'   : value_weight,
+                'keep'     : keep,
+            }))
+
+        return ['chord'], render_templates(['chord'],
+                                           output,
+                                           output_dir,
+                                           json_name,
+                                           verbose=verbose)
 
 
     def visualize(self,
@@ -1179,6 +1306,15 @@ ASSETS = {
             relative('DashboardAssets/dashboard.js') : 'dashboard.js',
             relative('DashboardAssets/nv.d3.min.js') : 'nv.d3.min.js',
             relative('DashboardAssets/nv.d3.css') : 'nv.d3.css',
+        }
+    },
+    'chord' : {
+        'template' : {
+            relative('ChordAssets/template.html') : '%s_chord.html',
+        },
+        'static' : {
+            relative('ChordAssets/chord.js') : 'chord.js',
+            relative('ChordAssets/d3.min.js') : 'd3.min.js',
         }
     }
 }
